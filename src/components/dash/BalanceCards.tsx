@@ -51,7 +51,6 @@ export default function BalanceCards() {
         onSnapshot(
           query(collection(db, colName), where("owner", "==", user.uid)),
           (snap) => {
-            /* salva docs e flag de carregado */
             if (colName === "incomes") {
               totalsRef.current.incomeDocs = snap.docs;
               totalsRef.current.incomeLoaded = true;
@@ -59,7 +58,6 @@ export default function BalanceCards() {
               totalsRef.current.expenseDocs = snap.docs;
               totalsRef.current.expenseLoaded = true;
             }
-            /* só calcula quando as duas coleções já chegaram */
             if (
               totalsRef.current.incomeLoaded &&
               totalsRef.current.expenseLoaded
@@ -72,7 +70,7 @@ export default function BalanceCards() {
       const unsubIncome = makeListener("incomes");
       const unsubExpense = makeListener("expenses");
 
-      /* limpa todos os listeners ao desmontar */
+      /* limpa listeners ao desmontar */
       return () => {
         unsubIncome();
         unsubExpense();
@@ -80,17 +78,16 @@ export default function BalanceCards() {
     });
 
     return () => unsubAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ---------- cálculo principal ---------- */
   function computeBalances() {
     const { incomeDocs, expenseDocs } = totalsRef.current;
 
-    /* somatório bruto para total da carteira */
     const sumDocs = (docs: DocSnap[]) =>
       docs.reduce(
-        (acc, d) => acc + (typeof d.data().amount === "number" ? d.data().amount : 0),
+        (acc, d) =>
+          acc + (typeof d.data().amount === "number" ? d.data().amount : 0),
         0
       );
 
@@ -99,18 +96,22 @@ export default function BalanceCards() {
     setWalletTotal(totalIncome - totalExpense);
 
     const now = new Date();
+
+    /* ⬇️ semana de domingo (0) a sábado (6) */
     const weekRange = {
-      start: startOfWeek(now, { weekStartsOn: 1 }),
-      end: endOfWeek(now, { weekStartsOn: 1 }),
+      start: startOfWeek(now, { weekStartsOn: 0 }),
+      end: endOfWeek(now, { weekStartsOn: 0 }),
     };
+
     const monthRange = { start: startOfMonth(now), end: endOfMonth(now) };
 
-    /* somatório dentro de um intervalo */
     const sumWithin = (docs: DocSnap[], range: typeof weekRange) =>
       docs.reduce((acc, d) => {
         const ts = d.data().date as Timestamp;
         const dt = ts.toDate();
-        return isWithinInterval(dt, range) ? acc + (d.data().amount as number) : acc;
+        return isWithinInterval(dt, range)
+          ? acc + (d.data().amount as number)
+          : acc;
       }, 0);
 
     const weekIncome = sumWithin(incomeDocs, weekRange);
@@ -132,7 +133,7 @@ export default function BalanceCards() {
   );
 }
 
-/* card reaproveitável */
+/* card reutilizável */
 function Card({
   label,
   value,
