@@ -30,52 +30,89 @@ export default function ExpenseForm({ onClose }: { onClose: () => void }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-white rounded-xl shadow p-4 mt-4 flex flex-col gap-3"
+      className="bg-white rounded-xl shadow-md p-4 mt-4 flex flex-col gap-4 max-w-md mx-auto w-full"
     >
-      <h2 className="text-lg font-semibold text-red-600">Adicionar Expense</h2>
+      <h2 className="text-lg font-semibold text-red-600 text-center">
+        Adicionar Expense
+      </h2>
 
-      <input
-        type="text"
-        placeholder="Nome"
-        className="input"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        required
-      />
+      {/* Nome */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="name-e" className="text-sm font-medium text-gray-700">
+          Nome
+        </label>
+        <input
+          id="name-e"
+          type="text"
+          placeholder="Ex: Alimentação, Transporte"
+          className="input"
+          inputMode="text"
+          autoCapitalize="words"
+          autoComplete="off"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+      </div>
 
-      <input
-        type="number"
-        step="0.01"
-        placeholder="Valor (£)"
-        className="input"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        required
-      />
+      {/* Valor */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="amount-e" className="text-sm font-medium text-gray-700">
+          Valor (£)
+        </label>
+        <input
+          id="amount-e"
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          placeholder="0.00"
+          className="input"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          required
+        />
+      </div>
 
-      <DatePicker
-        selected={date}
-        onChange={(d) => setDate(d)}
-        className="input"
-        dateFormat="dd/MM/yyyy"
-        placeholderText="Data"
-      />
+      {/* Data */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="date-e" className="text-sm font-medium text-gray-700">
+          Data
+        </label>
+        <DatePicker
+          selected={date}
+          onChange={(d) => setDate(d)}
+          className="input"
+          dateFormat="dd/MM/yyyy"
+          placeholderText="Selecionar data"
+          showPopperArrow={false}
+          maxDate={new Date()}
+          id="date-e"
+        />
+      </div>
 
-      <textarea
-        className="input"
-        placeholder="Notas"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-      />
+      {/* Notas */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="notes-e" className="text-sm font-medium text-gray-700">
+          Notas
+        </label>
+        <textarea
+          id="notes-e"
+          className="input min-h-[80px] resize-none"
+          placeholder="Informações adicionais (opcional)"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
 
-      <div className="flex justify-between mt-2">
-        <button type="submit" className="btn-primary w-[48%]">
+      {/* Botões */}
+      <div className="flex flex-col sm:flex-row gap-3 mt-2">
+        <button type="submit" className="btn-primary w-full sm:w-1/2">
           Salvar
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="btn-secondary w-[48%] text-center"
+          className="btn-secondary w-full sm:w-1/2"
         >
           Cancelar
         </button>
