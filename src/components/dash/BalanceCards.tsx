@@ -1,68 +1,151 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { auth } from "@/lib/firebase";
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { useEffect, useState, useRef } from "react";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  Timestamp,
+  QueryDocumentSnapshot,
+  DocumentData,
+} from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import {
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  isWithinInterval,
+} from "date-fns";
+
+/* ---------- tipos auxiliares ---------- */
+type DocSnap = QueryDocumentSnapshot<DocumentData>;
+type TotalsRef = {
+  incomeDocs: DocSnap[];
+  expenseDocs: DocSnap[];
+  incomeLoaded: boolean;
+  expenseLoaded: boolean;
+};
 
 export default function BalanceCards() {
+  /* estados exibidos na UI */
   const [weekTotal, setWeekTotal] = useState(0);
   const [monthTotal, setMonthTotal] = useState(0);
   const [walletTotal, setWalletTotal] = useState(0);
 
+  /* mantém docs entre re-renders */
+  const totalsRef = useRef<TotalsRef>({
+    incomeDocs: [],
+    expenseDocs: [],
+    incomeLoaded: false,
+    expenseLoaded: false,
+  });
+
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    const unsubAuth = auth.onAuthStateChanged((user) => {
+      if (!user) return; // sem usuário logado
 
-    async function fetchData() {
-      const now = new Date();
+      /* listener helper */
+      const makeListener = (colName: "incomes" | "expenses") =>
+        onSnapshot(
+          query(collection(db, colName), where("owner", "==", user.uid)),
+          (snap) => {
+            /* salva docs e flag de carregado */
+            if (colName === "incomes") {
+              totalsRef.current.incomeDocs = snap.docs;
+              totalsRef.current.incomeLoaded = true;
+            } else {
+              totalsRef.current.expenseDocs = snap.docs;
+              totalsRef.current.expenseLoaded = true;
+            }
+            /* só calcula quando as duas coleções já chegaram */
+            if (
+              totalsRef.current.incomeLoaded &&
+              totalsRef.current.expenseLoaded
+            ) {
+              computeBalances();
+            }
+          }
+        );
 
-      const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-      const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-      const monthStart = startOfMonth(now);
-      const monthEnd = endOfMonth(now);
+      const unsubIncome = makeListener("incomes");
+      const unsubExpense = makeListener("expenses");
 
-      const getTotal = async (type: "incomes" | "expenses", start?: Date, end?: Date) => {
-        const col = collection(db, type);
-        let q = query(col, where("owner", "==", uid));
-        if (start && end) {
-          q = query(col, where("owner", "==", uid), where("date", ">=", start), where("date", "<=", end));
-        }
-        const snap = await getDocs(q);
-        return snap.docs.reduce((acc, doc) => acc + Number(doc.data().amount || 0), 0);
+      /* limpa todos os listeners ao desmontar */
+      return () => {
+        unsubIncome();
+        unsubExpense();
       };
+    });
 
-      const weekIncome = await getTotal("incomes", weekStart, weekEnd);
-      const weekExpense = await getTotal("expenses", weekStart, weekEnd);
-      setWeekTotal(weekIncome - weekExpense);
-
-      const monthIncome = await getTotal("incomes", monthStart, monthEnd);
-      const monthExpense = await getTotal("expenses", monthStart, monthEnd);
-      setMonthTotal(monthIncome - monthExpense);
-
-      const totalIncome = await getTotal("incomes");
-      const totalExpense = await getTotal("expenses");
-      setWalletTotal(totalIncome - totalExpense);
-    }
-
-    fetchData();
+    return () => unsubAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ---------- cálculo principal ---------- */
+  function computeBalances() {
+    const { incomeDocs, expenseDocs } = totalsRef.current;
+
+    /* somatório bruto para total da carteira */
+    const sumDocs = (docs: DocSnap[]) =>
+      docs.reduce(
+        (acc, d) => acc + (typeof d.data().amount === "number" ? d.data().amount : 0),
+        0
+      );
+
+    const totalIncome = sumDocs(incomeDocs);
+    const totalExpense = sumDocs(expenseDocs);
+    setWalletTotal(totalIncome - totalExpense);
+
+    const now = new Date();
+    const weekRange = {
+      start: startOfWeek(now, { weekStartsOn: 1 }),
+      end: endOfWeek(now, { weekStartsOn: 1 }),
+    };
+    const monthRange = { start: startOfMonth(now), end: endOfMonth(now) };
+
+    /* somatório dentro de um intervalo */
+    const sumWithin = (docs: DocSnap[], range: typeof weekRange) =>
+      docs.reduce((acc, d) => {
+        const ts = d.data().date as Timestamp;
+        const dt = ts.toDate();
+        return isWithinInterval(dt, range) ? acc + (d.data().amount as number) : acc;
+      }, 0);
+
+    const weekIncome = sumWithin(incomeDocs, weekRange);
+    const weekExpense = sumWithin(expenseDocs, weekRange);
+    setWeekTotal(weekIncome - weekExpense);
+
+    const monthIncome = sumWithin(incomeDocs, monthRange);
+    const monthExpense = sumWithin(expenseDocs, monthRange);
+    setMonthTotal(monthIncome - monthExpense);
+  }
+
+  /* ---------- UI ---------- */
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-      <div className="bg-white p-4 rounded-lg shadow text-center">
-        <h2 className="text-sm text-gray-500">Saldo da Semana</h2>
-        <p className="text-xl font-bold text-green-600">£{weekTotal.toFixed(2)}</p>
-      </div>
-      <div className="bg-white p-4 rounded-lg shadow text-center">
-        <h2 className="text-sm text-gray-500">Saldo do Mês</h2>
-        <p className="text-xl font-bold text-blue-600">£{monthTotal.toFixed(2)}</p>
-      </div>
-      <div className="bg-white p-4 rounded-lg shadow text-center">
-        <h2 className="text-sm text-gray-500">Total da Carteira</h2>
-        <p className="text-xl font-bold text-black">£{walletTotal.toFixed(2)}</p>
-      </div>
+      <Card label="Saldo da Semana" value={weekTotal} color="text-green-600" />
+      <Card label="Saldo do Mês" value={monthTotal} color="text-blue-600" />
+      <Card label="Total Carteira" value={walletTotal} color="text-black" />
+    </div>
+  );
+}
+
+/* card reaproveitável */
+function Card({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div className="bg-white p-4 rounded-lg shadow text-center">
+      <h2 className="text-sm text-gray-500">{label}</h2>
+      <p className={`text-xl font-bold ${color}`}>£{value.toFixed(2)}</p>
     </div>
   );
 }
