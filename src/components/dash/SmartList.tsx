@@ -6,17 +6,15 @@ import {
   query,
   where,
   orderBy,
-  limit,
-  getDocs,
-  startAfter,
+  onSnapshot,
   Timestamp,
-  QueryDocumentSnapshot,
-  DocumentData,
+  doc,
+  updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { format } from "date-fns";
 
-// Tipagem das entradas do Firestore
 type Entry = {
   id: string;
   type: "income" | "expense";
@@ -28,85 +26,76 @@ type Entry = {
 
 export default function SmartList() {
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [lastDocs, setLastDocs] = useState<Record<"income" | "expense", QueryDocumentSnapshot<DocumentData> | null>>({
-    income: null,
-    expense: null,
-  });
   const [loading, setLoading] = useState(true);
   const [userUID, setUserUID] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<Partial<Entry>>({});
 
-  const PAGE_SIZE = 5;
-
-  // Escuta login do usuário para capturar UID
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged((user) => {
+    const unsubAuth = auth.onAuthStateChanged((user) => {
       if (user?.uid) setUserUID(user.uid);
     });
-    return () => unsub();
+    return () => unsubAuth();
   }, []);
 
-  // Dispara carregamento ao ter o UID
   useEffect(() => {
-    if (userUID) loadEntries(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userUID]);
-
-  // Carrega entradas do Firestore (income e expense)
-  async function loadEntries(firstLoad = false) {
     if (!userUID) return;
-    setLoading(true);
 
     const types: ("income" | "expense")[] = ["income", "expense"];
+    const unsubscribes: (() => void)[] = [];
 
-    const fetches = await Promise.all(
-      types.map((type) =>
-        getDocs(
-          query(
-            collection(db, type === "income" ? "incomes" : "expenses"),
-            where("owner", "==", userUID),
-            orderBy("date", "desc"),
-            ...(firstLoad || !lastDocs[type]
-              ? [limit(PAGE_SIZE)]
-              : [startAfter(lastDocs[type]!), limit(PAGE_SIZE)])
-          )
-        )
-      )
-    );
+    types.forEach((type) => {
+      const q = query(
+        collection(db, type === "income" ? "incomes" : "expenses"),
+        where("owner", "==", userUID),
+        orderBy("date", "desc")
+      );
 
-    const newEntries: Entry[] = [];
-
-    fetches.forEach((snap, index) => {
-      const type = types[index];
-      const docs = snap.docs;
-
-      if (docs.length > 0) {
-        setLastDocs((prev) => ({ ...prev, [type]: docs[docs.length - 1] }));
-      }
-
-      docs.forEach((doc) => {
-        const data = doc.data();
-        if (
-          typeof data.amount === "number" &&
-          data.date instanceof Timestamp &&
-          typeof data.name === "string"
-        ) {
-          newEntries.push({
+      const unsub = onSnapshot(q, (snap) => {
+        const updatedEntries: Entry[] = snap.docs.map((doc) => {
+          const data = doc.data();
+          return {
             id: doc.id,
             type,
             name: data.name,
             amount: data.amount,
             date: data.date,
             notes: data.notes || "",
-          });
-        }
+          };
+        });
+
+        setEntries((prev) => {
+          const otherType = type === "income" ? "expense" : "income";
+          const others = prev.filter((e) => e.type === otherType);
+          return [...others, ...updatedEntries].sort((a, b) => b.date.toMillis() - a.date.toMillis());
+        });
+        setLoading(false);
       });
+
+      unsubscribes.push(unsub);
     });
 
-    const merged = firstLoad ? newEntries : [...entries, ...newEntries];
-    merged.sort((a, b) => b.date.toMillis() - a.date.toMillis());
+    return () => unsubscribes.forEach((u) => u());
+  }, [userUID]);
 
-    setEntries(merged);
-    setLoading(false);
+  async function handleSave(id: string, type: "income" | "expense") {
+    if (!editData.name || editData.amount === undefined) return;
+
+    const ref = doc(db, type === "income" ? "incomes" : "expenses", id);
+    await updateDoc(ref, {
+      name: editData.name,
+      amount: editData.amount,
+      notes: editData.notes || "",
+    });
+
+    setEditId(null);
+    setEditData({});
+  }
+
+  async function handleDelete(id: string, type: "income" | "expense") {
+    if (!confirm("Are you sure you want to delete this entry?")) return;
+
+    await deleteDoc(doc(db, type === "income" ? "incomes" : "expenses", id));
   }
 
   return (
@@ -115,73 +104,123 @@ export default function SmartList() {
         Recent Incomes & Expenses
       </h2>
 
-      {/* Estado: lista vazia */}
       {entries.length === 0 && !loading && (
         <p className="text-center text-gray-500 py-6">No transactions found.</p>
       )}
 
-      {/* Lista de transações */}
       <ul className="divide-y">
-        {entries.map((entry) => (
-          <li
-            key={entry.id}
-            className={`flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 text-sm sm:text-base transition-all hover:bg-gray-50 ${
-              entry.type === "income"
-                ? "border-l-4 border-green-500"
-                : "border-l-4 border-red-500"
-            }`}
-          >
-            <div className="flex-1 pr-4">
-              <p className="font-semibold text-gray-800 capitalize">
-                {entry.name}
-                <span
-                  className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
-                    entry.type === "income"
-                      ? "bg-green-500 text-white"
-                      : "bg-red-500 text-white"
+        {entries.map((entry) => {
+          const isEditing = editId === entry.id;
+          return (
+            <li
+              key={entry.id}
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 text-sm sm:text-base transition-all hover:bg-gray-50 ${
+                entry.type === "income"
+                  ? "border-l-4 border-green-500"
+                  : "border-l-4 border-red-500"
+              }`}
+            >
+              <div className="flex-1 pr-4 space-y-1">
+                {isEditing ? (
+                  <>
+                    <input
+                      className="w-full border rounded px-2 py-1 text-sm"
+                      value={editData.name || ""}
+                      onChange={(e) =>
+                        setEditData({ ...editData, name: e.target.value })
+                      }
+                    />
+                    <input
+                      type="number"
+                      className="w-full border rounded px-2 py-1 text-sm"
+                      value={editData.amount?.toString() || ""}
+                      onChange={(e) =>
+                        setEditData({
+                          ...editData,
+                          amount: parseFloat(e.target.value),
+                        })
+                      }
+                    />
+                    <textarea
+                      className="w-full border rounded px-2 py-1 text-sm"
+                      value={editData.notes || ""}
+                      onChange={(e) =>
+                        setEditData({ ...editData, notes: e.target.value })
+                      }
+                      rows={2}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-gray-800 capitalize">
+                      {entry.name}
+                      <span
+                        className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
+                          entry.type === "income"
+                            ? "bg-green-500 text-white"
+                            : "bg-red-500 text-white"
+                        }`}
+                      >
+                        {entry.type}
+                      </span>
+                    </p>
+                    <p className="text-gray-500 text-xs sm:text-sm">
+                      {entry.notes || "No description"}
+                    </p>
+                  </>
+                )}
+              </div>
+
+              <div className="text-right min-w-[90px] sm:min-w-[120px]">
+                <p
+                  className={`font-bold ${
+                    entry.type === "income" ? "text-green-600" : "text-red-600"
                   }`}
                 >
-                  {entry.type}
-                </span>
-              </p>
-              <p className="text-gray-500 text-xs sm:text-sm">
-                {entry.notes || "No description"}
-              </p>
-            </div>
+                  £{entry.amount.toFixed(2)}
+                </p>
+                <p className="text-gray-400 text-xs">
+                  {format(entry.date.toDate(), "dd/MM/yyyy")}
+                </p>
+              </div>
 
-            <div className="text-right mt-2 sm:mt-0 sm:ml-4">
-              <p
-                className={`font-bold ${
-                  entry.type === "income"
-                    ? "text-green-600"
-                    : "text-red-600"
-                }`}
-              >
-                £{entry.amount.toFixed(2)}
-              </p>
-              <p className="text-gray-400 text-xs">
-                {format(entry.date.toDate(), "dd/MM/yyyy")}
-              </p>
-            </div>
-          </li>
-        ))}
+              <div className="flex gap-2 mt-2 sm:mt-0">
+                {isEditing ? (
+                  <button
+                    onClick={() => handleSave(entry.id, entry.type)}
+                    className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                  >
+                    Save
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setEditId(entry.id);
+                      setEditData({
+                        name: entry.name,
+                        amount: entry.amount,
+                        notes: entry.notes,
+                      });
+                    }}
+                    className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(entry.id, entry.type)}
+                  className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600"
+                >
+                  Delete
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
 
-      {/* Estado: carregando */}
       {loading && (
         <div className="py-4 text-center text-sm text-gray-500">Loading...</div>
-      )}
-
-      {/* Botão "Load More" */}
-      {!loading && (
-        <div className="text-center p-4">
-          <button
-            onClick={() => loadEntries(false)}
-            className="text-sm text-blue-600 hover:underline font-medium"
-          >
-            Load more
-          </button>
-        </div>
       )}
     </div>
   );
