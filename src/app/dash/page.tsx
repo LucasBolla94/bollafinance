@@ -1,6 +1,7 @@
 import BalanceCards from "@/components/dash/BalanceCards";
 import AddButtons from "@/components/dash/AddButtons";
 import SmartList from "@/components/dash/SmartList";
+import Chart from "@/components/dash/Chart";
 
 export default function DashPage() {
   return (
@@ -9,6 +10,9 @@ export default function DashPage() {
       <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center sm:text-left">
         Financial Dashboard
       </h1>
+
+      {/* Gráfico no topo */}
+      <Chart />
 
       {/* Cards com saldos */}
       <BalanceCards />
