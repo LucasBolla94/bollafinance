@@ -5,6 +5,7 @@ import { collection, addDoc, Timestamp } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { FaMoneyBillWave, FaStickyNote, FaCalendarAlt, FaRegEdit } from "react-icons/fa";
 
 export default function IncomeForm({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
@@ -30,21 +31,22 @@ export default function IncomeForm({ onClose }: { onClose: () => void }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-white rounded-xl shadow-md p-4 mt-4 flex flex-col gap-4 max-w-md mx-auto w-full"
+      className="animate-fadeIn bg-white rounded-xl shadow-lg p-6 mt-6 max-w-md w-full mx-auto flex flex-col gap-5"
     >
-      <h2 className="text-lg font-semibold text-green-600 text-center">
-        Adicionar Income
+      <h2 className="text-center text-xl font-bold text-green-600 mb-2">
+        <FaMoneyBillWave className="inline mr-2" />
+        Add New Income
       </h2>
 
-      {/* Campo: Nome */}
+      {/* Nome */}
       <div className="flex flex-col gap-1">
-        <label htmlFor="name" className="text-sm font-medium text-gray-700">
-          Nome
+        <label htmlFor="name" className="text-sm text-gray-700 font-medium flex items-center gap-2">
+          <FaRegEdit /> Name
         </label>
         <input
           id="name"
           type="text"
-          placeholder="Ex: Salário, Freelancer"
+          placeholder="Ex: Salary, Freelance Job"
           className="input"
           inputMode="text"
           autoCapitalize="words"
@@ -55,10 +57,10 @@ export default function IncomeForm({ onClose }: { onClose: () => void }) {
         />
       </div>
 
-      {/* Campo: Valor */}
+      {/* Valor */}
       <div className="flex flex-col gap-1">
-        <label htmlFor="amount" className="text-sm font-medium text-gray-700">
-          Valor (£)
+        <label htmlFor="amount" className="text-sm text-gray-700 font-medium flex items-center gap-2">
+          <FaMoneyBillWave /> Amount (£)
         </label>
         <input
           id="amount"
@@ -73,48 +75,48 @@ export default function IncomeForm({ onClose }: { onClose: () => void }) {
         />
       </div>
 
-      {/* Campo: Data */}
+      {/* Data */}
       <div className="flex flex-col gap-1">
-        <label htmlFor="date" className="text-sm font-medium text-gray-700">
-          Data
+        <label htmlFor="date" className="text-sm text-gray-700 font-medium flex items-center gap-2">
+          <FaCalendarAlt /> Date
         </label>
         <DatePicker
           selected={date}
           onChange={(d) => setDate(d)}
           className="input"
           dateFormat="dd/MM/yyyy"
-          placeholderText="Selecionar data"
+          placeholderText="Select date"
           showPopperArrow={false}
           maxDate={new Date()}
           id="date"
         />
       </div>
 
-      {/* Campo: Notas */}
+      {/* Notas */}
       <div className="flex flex-col gap-1">
-        <label htmlFor="notes" className="text-sm font-medium text-gray-700">
-          Notas
+        <label htmlFor="notes" className="text-sm text-gray-700 font-medium flex items-center gap-2">
+          <FaStickyNote /> Notes
         </label>
         <textarea
           id="notes"
           className="input min-h-[80px] resize-none"
-          placeholder="Informações adicionais (opcional)"
+          placeholder="Optional notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
       </div>
 
-      {/* Botões */}
-      <div className="flex flex-col sm:flex-row gap-3 mt-2">
+      {/* Ações */}
+      <div className="flex flex-col sm:flex-row gap-3 mt-4">
         <button type="submit" className="btn-primary w-full sm:w-1/2">
-          Salvar
+          Save
         </button>
         <button
           type="button"
           onClick={onClose}
           className="btn-secondary w-full sm:w-1/2"
         >
-          Cancelar
+          Cancel
         </button>
       </div>
     </form>
