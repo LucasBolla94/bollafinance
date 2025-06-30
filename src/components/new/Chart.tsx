@@ -3,19 +3,26 @@
 import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
-  CategoryScale,
   Chart as ChartJS,
-  Legend,
+  CategoryScale,
   LinearScale,
   BarElement,
+  Title,
   Tooltip,
+  Legend,
 } from 'chart.js';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  Timestamp,
+} from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
 import { format, isThisWeek, isThisMonth } from 'date-fns';
+import { onAuthStateChanged } from 'firebase/auth';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 type DailyData = {
   [date: string]: {
@@ -25,30 +32,30 @@ type DailyData = {
 };
 
 export default function Chart() {
-  const [userId, setUserId] = useState<string | null>(null);
+  const [uid, setUid] = useState<string | null>(null);
   const [dailyData, setDailyData] = useState<DailyData>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [period, setPeriod] = useState<'week' | 'month'>('week');
-  const [clientReady, setClientReady] = useState(false); // ⚠️ Protege SSR
+  const [clientReady, setClientReady] = useState(false); // evita hydration
 
+  // Só ativa no client
   useEffect(() => {
     setClientReady(true);
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) setUserId(user.uid);
+      if (user) setUid(user.uid);
     });
     return () => unsub();
   }, []);
 
+  // 🔁 Fetch de incomes/expenses
   useEffect(() => {
-    if (!userId) return;
-
+    if (!uid) return;
     const fetchData = async () => {
       setLoading(true);
-
       try {
         const [incomeSnap, expenseSnap] = await Promise.all([
-          getDocs(query(collection(db, 'incomes'), where('user', '==', userId))),
-          getDocs(query(collection(db, 'expenses'), where('user', '==', userId))),
+          getDocs(query(collection(db, 'incomes'), where('user', '==', uid))),
+          getDocs(query(collection(db, 'expenses'), where('user', '==', uid))),
         ]);
 
         const temp: DailyData = {};
@@ -57,7 +64,7 @@ export default function Chart() {
           const data = doc.data();
           const date = (data.date as Timestamp)?.toDate?.();
           if (!date) return;
-          const isValid = period === 'week' ? isThisWeek(date) : isThisMonth(date);
+          const isValid = (period === 'week' && isThisWeek(date)) || (period === 'month' && isThisMonth(date));
           if (!isValid) return;
           const dateStr = format(date, 'dd/MM');
           if (!temp[dateStr]) temp[dateStr] = { income: 0, expense: 0 };
@@ -68,7 +75,7 @@ export default function Chart() {
           const data = doc.data();
           const date = (data.date as Timestamp)?.toDate?.();
           if (!date) return;
-          const isValid = period === 'week' ? isThisWeek(date) : isThisMonth(date);
+          const isValid = (period === 'week' && isThisWeek(date)) || (period === 'month' && isThisMonth(date));
           if (!isValid) return;
           const dateStr = format(date, 'dd/MM');
           if (!temp[dateStr]) temp[dateStr] = { income: 0, expense: 0 };
@@ -84,7 +91,7 @@ export default function Chart() {
     };
 
     fetchData();
-  }, [userId, period]);
+  }, [uid, period]);
 
   const labels = Object.keys(dailyData).sort((a, b) => {
     const [dayA, monthA] = a.split('/').map(Number);
@@ -95,13 +102,15 @@ export default function Chart() {
   const incomeData = labels.map((d) => dailyData[d].income);
   const expenseData = labels.map((d) => dailyData[d].expense);
 
-  if (!clientReady || !userId) return null;
+  if (!clientReady || !uid) {
+    return null; // Evita render SSR até tudo estar certo
+  }
 
   return (
     <div className="w-full max-w-5xl mx-auto bg-white rounded-xl p-4 shadow-md mb-6">
       <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-          📊 Financial Overview
+          📈 Financial Overview
           <span className="text-sm text-gray-500">
             ({period === 'week' ? 'This Week' : 'This Month'})
           </span>
@@ -117,7 +126,7 @@ export default function Chart() {
       </div>
 
       {loading ? (
-        <p className="text-center text-gray-500 animate-pulse">Carregando gráfico...</p>
+        <p className="text-center text-gray-500 animate-pulse">📊 Loading chart...</p>
       ) : (
         <div className="relative w-full h-[360px] sm:h-[400px]">
           <Bar
